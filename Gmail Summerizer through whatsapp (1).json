@@ -1,0 +1,365 @@
+{
+  "name": "Gmail Summerizer through whatsapp",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 20
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -736,
+        -752
+      ],
+      "id": "e4a4f035-5c4c-452e-ae24-3eaf4c0fbd2a",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "limit": 25,
+        "simple": false,
+        "filters": {
+          "readStatus": "both",
+          "receivedAfter": "={{ $now.startOf('day').toISO() }}\n"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -528,
+        -752
+      ],
+      "id": "605a0cbc-0fb4-4e41-9c4d-9e7cb58ba70b",
+      "name": "Get many messages",
+      "webhookId": "ac6b64db-f4d9-4034-9bdc-1ccd17e9e6c6",
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "retryOnFail": false,
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "Xe8fHhHtNFEZJ7Bf",
+          "name": "Gmail account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "240a6211-b4a8-475e-9405-a2a562a2c727",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            },
+            {
+              "id": "b9eb4fdb-8cc8-4920-9d28-289e3b35a8a3",
+              "name": "Subject",
+              "value": "={{ $json.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "2bdb7df0-d057-475a-ae43-1bf0d89ac42c",
+              "name": "Sender",
+              "value": "={{ $json.headers.from }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -304,
+        -752
+      ],
+      "id": "b06d1fbe-9718-402b-a02f-5b3ed706308b",
+      "name": "Extract Email Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (JavaScript)\n// Convert raw AI/email output into clean human-readable text\n\nlet raw = $json.output || $json.text || \"\";\n\n// Remove markdown fences\nraw = raw.replace(/```json/i, \"\").replace(/```/g, \"\").trim();\n\n// Extract all summary fields\nconst summaryMatches = raw.match(/\"summary\"\\s*:\\s*\"([^\"]+)\"/g) || [];\n\nlet text = `📩 Daily Email Summary\\n\\n`;\n\nsummaryMatches.forEach((match, idx) => {\n    // Extract content and replace escaped newlines with spaces\n    const summary = match.replace(/\"summary\"\\s*:\\s*\"/, \"\")\n                         .replace(/\"$/, \"\")\n                         .replace(/\\\\n/g, \" \"); // Replace \\n with space\n    text += `${idx + 1}. ${summary}\\n\\n`; // Separate each summary with a blank line\n});\n\nreturn { text };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -752
+      ],
+      "id": "ddd50374-bcc1-443c-82d5-5ca3120b088a",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-2.0-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        48,
+        -544
+      ],
+      "id": "f30ea227-fa6f-4560-b564-93df2b61f6ef",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1sLMWA49pRxYlDWD",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.textForSummarization }}\n",
+        "options": {
+          "systemMessage": "You are an AI assistant specialized in email summarization.\n\nYour task is to create structured and detailed summaries of all emails received in a given day, excluding spam and irrelevant messages.\n\nObjective:\n\nMake it easier to process received email information by organizing it in a clear, structured, and machine-readable format.\n\nResponsibilities:\n\nContent Analysis:\n\nRead the subject, sender, and body of each email.\n\nIdentify the context, key points, and any necessary actions.\n\nSummary Creation:\n\nSummarize each email in a structured manner, including:\n\n\"sender\": Sender’s Name\n\n\"subject\": Email Subject\n\n\"summary\": A comprehensive summary highlighting key information and action points\n\nEnsure summaries are clear, concise, and easy to understand.\n\nIgnore irrelevant messages such as spam or non-essential emails.\n\nOutput Requirements:\n\nThe output must be valid JSON only.\n\nDo NOT include HTML, markdown, or code fences.\n\nThe JSON must exactly match this structure:\n\n{\n  \"dailyEmailSummary\": [\n    {\n      \"subject\": \"string\",\n      \"sender\": \"string\",\n      \"summary\": \"string\"\n    }\n  ]\n}\n\n\nImportant: Only return JSON. No explanations, code fences, or extra text."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        176,
+        -752
+      ],
+      "id": "76a6dd22-3127-498e-9525-027a53adac43",
+      "name": "AI Agent with summerize"
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (JavaScript)\n// Converts AI JSON output into HTML email format\n\nlet raw = $json.output;\n\n// Step 1: Remove Markdown fences\nif (typeof raw === \"string\") {\n  raw = raw.replace(/```json/i, \"\")\n           .replace(/```/g, \"\")\n           .trim();\n}\n\n// Step 2: Fix escaped characters\nraw = raw.replace(/\\\\([^\"\\\\/bfnrtu])/g, \"\\\\\\\\$1\");\n\n// Step 3: Extract JSON\nconst match = raw.match(/{[\\s\\S]*}/);\nif (!match) throw new Error(\"No valid JSON found in AI output\");\n\nlet parsed;\ntry {\n  parsed = JSON.parse(match[0]);\n} catch (e) {\n  throw new Error(\"Failed to parse AI JSON safely: \" + e.message);\n}\n\n// Step 4: Get emails\nconst data = parsed.dailyEmailSummary || [];\n\n// Step 5: Build HTML\nlet html = `<h2>📩 Daily Email Summary</h2>`;\n\ndata.forEach((email, idx) => {\n  const subject = email.subject || \"No Subject\";\n  const sender = email.sender || \"Unknown Sender\";\n  const summary = email.summary || \"No summary available.\";\n\n  html += `\n  <p>\n    <b>${idx + 1}. Email from ${sender}</b><br>\n    <b>Subject:</b> ${subject}<br>\n    <b>Summary:</b> ${summary}\n  </p>\n  <hr>`;\n});\n\n// Step 6: Return HTML\nreturn [{ json: { html } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -544
+      ],
+      "id": "6a844f66-3b6f-4508-bebb-be4bd44ea898",
+      "name": "convert the json to human readable lang"
+    },
+    {
+      "parameters": {
+        "sendTo": "varshinir2004.email.com@gmail.com",
+        "subject": "=Daily Email Summary - {{ $today }}\n",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        -544
+      ],
+      "id": "6d33950f-38eb-4d1a-a053-8d06c7f92a14",
+      "name": "send message to email",
+      "webhookId": "cd13fc6c-b75d-4635-bb4e-aac18e8b4ba9",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "Xe8fHhHtNFEZJ7Bf",
+          "name": "Gmail account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "thread",
+        "operation": "addLabels",
+        "threadId": "={{ $json.id }}",
+        "labelIds": "={{ $json.labelIds[0] }}"
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        912,
+        -544
+      ],
+      "id": "590ca5c7-3175-4bb9-b059-4d0788175288",
+      "name": "send with label",
+      "webhookId": "e255ab20-b2f2-4c2b-b267-2cab8e4adf7f",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "Xe8fHhHtNFEZJ7Bf",
+          "name": "Gmail account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code node (JavaScript)\n// Converts AI JSON output into human-readable plain text\n\nlet raw = $json.output;\n\n// Step 1: Remove Markdown fences\nif (typeof raw === \"string\") {\n  raw = raw.replace(/```json/i, \"\")\n           .replace(/```/g, \"\")\n           .trim();\n}\n\n// Step 2: Fix escaped characters\nraw = raw.replace(/\\\\([^\"\\\\/bfnrtu])/g, \"\\\\\\\\$1\");\n\n// Step 3: Extract JSON\nconst match = raw.match(/{[\\s\\S]*}/);\nif (!match) throw new Error(\"No valid JSON found in AI output\");\n\nlet parsed;\ntry {\n  parsed = JSON.parse(match[0]);\n} catch (e) {\n  throw new Error(\"Failed to parse AI JSON safely: \" + e.message);\n}\n\n// Step 4: Get emails\nconst data = parsed.dailyEmailSummary || [];\n\n// Step 5: Build plain text\nlet text = \"📩 Daily Email Summary\\n\\n\";\n\ndata.forEach((email, idx) => {\n  const subject = email.subject || \"No Subject\";\n  const sender = email.sender || \"Unknown Sender\";\n  const summary = email.summary || \"No summary available.\";\n\n  text += `${idx + 1}. Email from ${sender}\\n`;\n  text += `   Subject: ${subject}\\n`;\n  text += `   Summary: ${summary}\\n`;\n  text += \"--------------------------------------------\\n\\n\";\n});\n\n// Step 6: Return text\nreturn [{ json: { text } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        528,
+        -752
+      ],
+      "id": "14fd1879-87e8-4d23-9bff-86f57c34db74",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/use your own api key/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "whatsapp:+14155238886"
+            },
+            {
+              "name": "To",
+              "value": "whatsapp:+919620594287"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        704,
+        -752
+      ],
+      "id": "4065fe3f-1da9-4847-88c5-7c7b60752ac4",
+      "name": "twilio whatsapp",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "RWrXIZuCCvuYuZpt",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many messages": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Data": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "AI Agent with summerize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent with summerize",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent with summerize": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "convert the json to human readable lang": {
+      "main": [
+        [
+          {
+            "node": "send message to email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "send message to email": {
+      "main": [
+        [
+          {
+            "node": "send with label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "twilio whatsapp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6c13b86d-37ab-41bc-a4ea-7acf8001c16d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c4019fd7f7941532809a0d9f3ab1595cfebfc95849dae58d6e5ab8c3ff7eb25d"
+  },
+  "id": "KwAvn5BW4HfuCeBS",
+  "tags": []
+}
